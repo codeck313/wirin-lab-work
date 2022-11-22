@@ -107,11 +107,11 @@ int speeddif = 0;
 
 float spd = 0;
 int steeringFeedback = 0, error = 0;
-int steeringCommand = 500, speedCommand = 0;
+int steeringCommand = 500, speedCommand = 0, vehicleDir = 0;
 float outputSteering, outputHubL, outputHubR;
-pidVar pidPot = { 50, 10, 0.1, 0, 0, 1024, -1024 , 0};
-pidVar pidHubL = { 2, 10, 0.09, 0, 0, 2000, 0 , 1};
-pidVar pidHubR = { 2, 10, 0.09, 0, 0, 2000, 0 , 1};
+pidVar pidPot = { 50, 10, 0.1, 0, 0, 1024, -1024, 0 };
+pidVar pidHubL = { 2, 10, 0.09, 0, 0, 2000, 0, 1 };
+pidVar pidHubR = { 2, 10, 0.09, 0, 0, 2000, 0, 1 };
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -171,10 +171,16 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 		voltagel = ((256) * voltagemsbl + voltagelsbl) / 10;
 		currentl = ((256) * currentmsbl + currentlsbl) / 10.0;
 		outputHubL = pidController(&pidHubL, (speedCommand - speedl),
-				ERROR_THRESH, speedl);
+		ERROR_THRESH, speedl);
+		if (vehicleDir == 0) {
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, 1);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, 0);
+		} else if (vehicleDir == 1) {
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, 0);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, 0);
+		}
 		HAL_DAC_SetValue(&hdac, DAC_CHANNEL_2, DAC_ALIGN_12B_R, outputHubL);
-	}
-	else if (Rxheader.ExtId == 0x0CF11E05) {
+	} else if (Rxheader.ExtId == 0x0CF11E05) {
 		speedlsbr = Rxmsg[0];
 		speedmsbr = Rxmsg[1];
 		currentlsbr = Rxmsg[2];
@@ -185,11 +191,16 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 		currentr = (((256) * currentmsbr + currentlsbr) / 10.0);
 		speedr = (256) * speedmsbr + (speedlsbr);
 		outputHubR = pidController(&pidHubR, (speedCommand - speedr),
-				ERROR_THRESH, speedr);
+		ERROR_THRESH, speedr);
+		if (vehicleDir == 0) {
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, 1);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, 0);
+		} else if (vehicleDir == 1) {
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, 0);
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, 0);
+		}
 		HAL_DAC_SetValue(&hdac, DAC_CHANNEL_1, DAC_ALIGN_12B_R, outputHubR);
-
 	}
-
 
 	switch (Rxheader.StdId) {
 	case 0x41:
@@ -207,6 +218,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 	case 0x69:
 		steeringCommand = Rxmsg[0] | (Rxmsg[1] << 8);
 		speedCommand = Rxmsg[2] | (Rxmsg[3] << 8);
+		vehicleDir = Rxmsg[4]; //0->fwd ; 1-> bkwd
 		break;
 	}
 	Rxheader.StdId = 0;
@@ -256,11 +268,12 @@ int main(void) {
 	HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
 	/* USER CODE END 2 */
 
-	// Burn the motors
-	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, 1);
-	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, 0);
 	// Burn the brake....Skrtttt
-	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, 1);
+	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, 1);
+
+	// Burn the motors
+//	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, 0);
+//	HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, 1);
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
@@ -277,6 +290,12 @@ int main(void) {
 			htim2.Instance->CCR1 = 0;
 			htim2.Instance->CCR2 = 0;
 		}
+
+		if(speedCommand==0)
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, 0);
+		else
+			HAL_GPIO_WritePin(GPIOD, GPIO_PIN_13, 1);
+
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
